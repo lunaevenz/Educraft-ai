@@ -41,7 +41,8 @@ function Generator() {
 
   const handleDownloadPdf = () => {
     if (worksheet) {
-      window.location.href = `/api/worksheets/${worksheet.id}/pdf`;
+      const token = localStorage.getItem('token');
+      window.location.href = `/api/worksheets/${worksheet.id}/pdf?token=${token}`;
     }
   };
 

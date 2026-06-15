@@ -7,6 +7,8 @@ import OpenAI from 'openai';
 import PDFDocument from 'pdfkit';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -15,6 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'educraft-secret-key-123';
 
 app.use(cors());
 app.use(express.json());
@@ -37,6 +40,20 @@ const runTeamDb = (sql) => {
   }
 };
 
+// Auth middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = (authHeader && authHeader.split(' ')[1]) || req.query.token;
+
+  if (!token) return res.status(401).json({ error: 'Access denied' });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: 'Invalid token' });
+    req.user = user;
+    next();
+  });
+};
+
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -45,8 +62,52 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.post('/api/generate-worksheet', async (req, res) => {
+// Auth Routes
+app.post('/api/auth/signup', async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  try {
+    // Check if user exists
+    const existing = runTeamDb(`SELECT id FROM users WHERE email = '${email}'`);
+    if (existing && existing.length > 0) return res.status(400).json({ error: 'User already exists' });
+
+    const id = uuidv4();
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    runTeamDb(`INSERT INTO users (id, email, password_hash, name) VALUES ('${id}', '${email}', '${passwordHash}', '${name || ''}')`);
+    
+    const token = jwt.sign({ id, email, name }, JWT_SECRET, { expiresIn: '24h' });
+    res.status(201).json({ token, user: { id, email, name } });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Signup failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  try {
+    const users = runTeamDb(`SELECT * FROM users WHERE email = '${email}'`);
+    if (!users || users.length === 0) return res.status(400).json({ error: 'Invalid credentials' });
+
+    const user = users[0];
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(400).json({ error: 'Invalid credentials' });
+
+    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.post('/api/generate-worksheet', authenticateToken, async (req, res) => {
   const { grade, subject, skill, difficulty, theme, learningStyle } = req.body;
+  const userId = req.user.id;
 
   if (!grade || !subject) {
     return res.status(400).json({ error: 'Grade and Subject are required' });
@@ -135,8 +196,8 @@ app.post('/api/generate-worksheet', async (req, res) => {
   };
 
   try {
-    const sql = `INSERT INTO worksheets (id, title, grade, subject, skill, difficulty, theme, learning_style, instructions, content, answer_key) 
-                 VALUES ('${fullWorksheet.id}', '${fullWorksheet.title.replace(/'/g, "''")}', '${fullWorksheet.grade}', '${fullWorksheet.subject.replace(/'/g, "''")}', '${fullWorksheet.skill.replace(/'/g, "''")}', '${fullWorksheet.difficulty}', '${fullWorksheet.theme.replace(/'/g, "''")}', '${fullWorksheet.learningStyle}', '${fullWorksheet.instructions.replace(/'/g, "''")}', '${JSON.stringify(fullWorksheet.questions).replace(/'/g, "''")}', '${JSON.stringify(fullWorksheet.answerKey).replace(/'/g, "''")}')`;
+    const sql = `INSERT INTO worksheets (id, title, grade, subject, skill, difficulty, theme, learning_style, instructions, content, answer_key, user_id) 
+                 VALUES ('${fullWorksheet.id}', '${fullWorksheet.title.replace(/'/g, "''")}', '${fullWorksheet.grade}', '${fullWorksheet.subject.replace(/'/g, "''")}', '${fullWorksheet.skill.replace(/'/g, "''")}', '${fullWorksheet.difficulty}', '${fullWorksheet.theme.replace(/'/g, "''")}', '${fullWorksheet.learningStyle}', '${fullWorksheet.instructions.replace(/'/g, "''")}', '${JSON.stringify(fullWorksheet.questions).replace(/'/g, "''")}', '${JSON.stringify(fullWorksheet.answerKey).replace(/'/g, "''")}', '${userId}')`;
     
     runTeamDb(sql);
     res.status(201).json(fullWorksheet);
@@ -146,22 +207,24 @@ app.post('/api/generate-worksheet', async (req, res) => {
   }
 });
 
-app.get('/api/worksheets', (req, res) => {
+app.get('/api/worksheets', authenticateToken, (req, res) => {
+  const userId = req.user.id;
   try {
-    const worksheets = runTeamDb('SELECT * FROM worksheets ORDER BY created_at DESC');
+    const worksheets = runTeamDb(`SELECT * FROM worksheets WHERE user_id = '${userId}' ORDER BY created_at DESC`);
     res.json(worksheets);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch worksheets' });
   }
 });
 
-app.get('/api/worksheets/:id/pdf', async (req, res) => {
+app.get('/api/worksheets/:id/pdf', authenticateToken, async (req, res) => {
   const { id } = req.params;
+  const userId = req.user.id;
 
   try {
-    const results = runTeamDb(`SELECT * FROM worksheets WHERE id = '${id}'`);
+    const results = runTeamDb(`SELECT * FROM worksheets WHERE id = '${id}' AND user_id = '${userId}'`);
     if (!results || results.length === 0) {
-      return res.status(404).json({ error: 'Worksheet not found' });
+      return res.status(404).json({ error: 'Worksheet not found or access denied' });
     }
 
     const worksheet = results[0];
