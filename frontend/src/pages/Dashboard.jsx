@@ -23,7 +23,8 @@ function Dashboard() {
   }, []);
 
   const handleDownload = (id) => {
-    window.location.href = `/api/worksheets/${id}/pdf`;
+    const token = localStorage.getItem('token');
+    window.location.href = `/api/worksheets/${id}/pdf?token=${token}`;
   };
 
   if (loading) return <div className="text-center py-12">Loading worksheets...</div>;
