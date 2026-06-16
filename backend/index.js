@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import Stripe from 'stripe';
 
 dotenv.config();
 
@@ -18,6 +19,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'educraft-secret-key-123';
+
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 app.use(cors());
 app.use(express.json());
@@ -52,6 +55,27 @@ const authenticateToken = (req, res, next) => {
     req.user = user;
     next();
   });
+};
+
+// Subscription middleware
+const checkSubscription = (req, res, next) => {
+  const userId = req.user.id;
+  try {
+    const subs = runTeamDb(`SELECT * FROM subscriptions WHERE user_id = '${userId}' AND status = 'active'`);
+    
+    if (!subs || subs.length === 0) {
+      return res.status(403).json({ 
+        error: 'Subscription required', 
+        code: 'SUBSCRIPTION_REQUIRED',
+        message: 'An active subscription is required to generate worksheets.' 
+      });
+    }
+    req.subscription = subs[0];
+    next();
+  } catch (error) {
+    console.error('Subscription check error:', error);
+    res.status(500).json({ error: 'Failed to verify subscription' });
+  }
 };
 
 app.get('/api/health', (req, res) => {
@@ -105,7 +129,111 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-app.post('/api/generate-worksheet', authenticateToken, async (req, res) => {
+// Subscription Routes
+app.get('/api/subscription', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  try {
+    const subs = runTeamDb(`SELECT * FROM subscriptions WHERE user_id = '${userId}' ORDER BY created_at DESC LIMIT 1`);
+    res.json(subs[0] || null);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch subscription' });
+  }
+});
+
+app.post('/api/subscription/checkout', authenticateToken, async (req, res) => {
+  const { planType } = req.body;
+  const userId = req.user.id;
+  const userEmail = req.user.email;
+
+  if (!stripe) {
+    // Mock successful subscription if no stripe key (for dev/demo)
+    const id = uuidv4();
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    
+    runTeamDb(`INSERT INTO subscriptions (id, user_id, plan_type, status, current_period_end) 
+               VALUES ('${id}', '${userId}', '${planType}', 'active', '${periodEnd.toISOString()}')`);
+    
+    return res.json({ url: '/dashboard?status=success' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `EduCraft AI - ${planType.charAt(0).toUpperCase() + planType.slice(1)} Plan`,
+          },
+          unit_amount: planType === 'individual' ? 999 : (planType === 'team' ? 2999 : 9999),
+        },
+        quantity: 1,
+      }],
+      mode: 'payment', // Should be 'subscription' in a real app with Products/Prices
+      success_url: `${req.headers.origin}/dashboard?status=success`,
+      cancel_url: `${req.headers.origin}/pricing?status=canceled`,
+      customer_email: userEmail,
+      client_reference_id: userId,
+      metadata: { planType, type: 'subscription' }
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Stripe error:', error);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// Marketplace Purchase Routes
+app.post('/api/marketplace/:id/purchase', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const userEmail = req.user.email;
+
+  try {
+    const items = runTeamDb(`SELECT * FROM marketplace_items WHERE id = '${id}'`);
+    if (!items || items.length === 0) return res.status(404).json({ error: 'Item not found' });
+    const item = items[0];
+
+    if (!stripe || item.price === 0) {
+      // Mock successful purchase or handle free items
+      const purchaseId = uuidv4();
+      runTeamDb(`INSERT INTO purchases (id, user_id, item_id, amount, status) 
+                 VALUES ('${purchaseId}', '${userId}', '${id}', ${item.price}, 'completed')`);
+      
+      return res.json({ url: `/marketplace/${id}?status=success` });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: item.title,
+            description: item.description,
+          },
+          unit_amount: Math.round(item.price * 100),
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: `${req.headers.origin}/marketplace/${id}?status=success`,
+      cancel_url: `${req.headers.origin}/marketplace/${id}?status=canceled`,
+      customer_email: userEmail,
+      client_reference_id: userId,
+      metadata: { itemId: id, type: 'marketplace_purchase' }
+    });
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Purchase error:', error);
+    res.status(500).json({ error: 'Failed to initiate purchase' });
+  }
+});
+
+app.post('/api/generate-worksheet', authenticateToken, checkSubscription, async (req, res) => {
   const { grade, subject, skill, difficulty, theme, learningStyle } = req.body;
   const userId = req.user.id;
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { Link } from 'react-router-dom';
 
 const GRADES = ['K', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th'];
 const SUBJECTS = ['Math', 'Science', 'English/Language Arts', 'History', 'Social Studies', 'Foreign Language', 'Art', 'Music'];
@@ -32,7 +33,18 @@ function Generator() {
       const response = await axios.post('/api/generate-worksheet', formData);
       setWorksheet(response.data);
     } catch (err) {
-      setError('Failed to generate worksheet. Please try again.');
+      if (err.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
+        setError(
+          <div className="flex flex-col items-center">
+            <p className="mb-4">{err.response.data.message}</p>
+            <Link to="/pricing" className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 transition font-bold">
+              View Subscription Plans
+            </Link>
+          </div>
+        );
+      } else {
+        setError('Failed to generate worksheet. Please try again.');
+      }
       console.error(err);
     } finally {
       setLoading(false);

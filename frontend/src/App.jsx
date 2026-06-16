@@ -7,6 +7,7 @@ import Signup from './pages/Signup';
 import Marketplace from './pages/Marketplace';
 import MarketplaceDetail from './pages/MarketplaceDetail';
 import PublishResource from './pages/PublishResource';
+import Pricing from './pages/Pricing';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 const ProtectedRoute = ({ children }) => {
@@ -42,6 +43,9 @@ function Navbar() {
               </Link>
               <Link to="/marketplace" className="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                 Marketplace
+              </Link>
+              <Link to="/pricing" className="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                Pricing
               </Link>
               <Link to="/dashboard" className="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                 My Worksheets
@@ -89,6 +93,7 @@ function App() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:id" element={<MarketplaceDetail />} />
+            <Route path="/pricing" element={<Pricing />} />
             <Route 
               path="/publish" 
               element={

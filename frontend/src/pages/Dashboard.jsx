@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useLocation } from 'react-router-dom';
 
 function Dashboard() {
   const [worksheets, setWorksheets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+  const location = useLocation();
 
   useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    if (query.get('status') === 'success') {
+      setSuccessMsg('Subscription activated successfully! You can now generate worksheets.');
+    }
+
     const fetchWorksheets = async () => {
       try {
         const response = await axios.get('/api/worksheets');
@@ -33,6 +41,12 @@ function Dashboard() {
   return (
     <div className="px-4">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">My Generated Worksheets</h1>
+      
+      {successMsg && (
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-8">
+          {successMsg}
+        </div>
+      )}
       
       {worksheets.length === 0 ? (
         <div className="bg-white shadow rounded-lg p-12 text-center">
