@@ -1,0 +1,27 @@
+{
+  "title": "String",
+  "learning_objectives": ["Array of strings"],
+  "standards_alignment": ["Array of strings"],
+  "sections": [
+    {
+      "section_title": "String",
+      "instructions": "String",
+      "questions": [
+        {
+          "id": "String",
+          "type": "multiple-choice | short-answer | true-false | fill-in-the-blank | matching | ordering | diagram-labeling",
+          "prompt": "String",
+          "visual_aid": "Optional: Descriptive text, ASCII art, or SVG-like path for rendering",
+          "points": "Number",
+          "options": ["Optional: Array for multiple-choice"],
+          "matching_pairs": { "left_side": [], "right_side": [] },
+          "ordering_items": ["Array of items to be ordered"]
+        }
+      ]
+    }
+  ],
+  "answer_key": {
+    "question_id": "Correct answer or explanation"
+  },
+  "reflection_question": "String"
+}

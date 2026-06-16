@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
+import PromptManager from './prompt-manager.js';
 
 dotenv.config();
 
@@ -19,6 +20,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'educraft-secret-key-123';
+
+const promptManager = new PromptManager('v1');
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -245,42 +248,16 @@ app.post('/api/generate-worksheet', authenticateToken, checkSubscription, async 
 
   if (openai) {
     try {
-      const prompt = `
-        Generate a structured educational worksheet in JSON format.
-        Parameters:
-        - Grade: ${grade}
-        - Subject: ${subject}
-        - Skill/Topic: ${skill || 'General'}
-        - Difficulty: ${difficulty}
-        - Theme: ${theme || 'None'}
-        - Learning Style: ${learningStyle}
-
-        The JSON should follow this structure:
-        {
-          "title": "String",
-          "instructions": "String",
-          "questions": [
-            {
-              "id": "q1",
-              "type": "multiple-choice | short-answer | true-false | fill-in-the-blank",
-              "prompt": "String",
-              "points": Number,
-              "options": ["Array of strings if multiple-choice", null otherwise]
-            }
-          ],
-          "answerKey": {
-            "q1": "Correct answer string"
-          }
-        }
-        
-        Ensure there are at least 5 questions of diverse types.
-        Make the content age-appropriate and aligned with standard curriculum for ${grade} ${subject}.
-        Return ONLY the JSON object.
-      `;
+      const { systemPrompt, userPrompt } = promptManager.generatePrompt({
+        grade, subject, skill, difficulty, theme, learningStyle
+      });
 
       const response = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
-        messages: [{ role: "system", content: "You are a helpful educational content generator." }, { role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
         response_format: { type: "json_object" }
       });
 
@@ -291,23 +268,50 @@ app.post('/api/generate-worksheet', authenticateToken, checkSubscription, async 
   }
 
   if (!worksheetData) {
+    // Fallback Mock data for dev
     worksheetData = {
       title: `${subject} Worksheet: ${skill || 'General'}`,
-      instructions: `Instructions: Complete the following activities for ${grade} ${subject}. Theme: ${theme || 'None'}.`,
-      questions: [
-        { id: 'q1', type: 'multiple-choice', prompt: `What is the core concept of ${skill || subject}?`, points: 5, options: ['Option A', 'Option B', 'Option C', 'Option D'] },
-        { id: 'q2', type: 'short-answer', prompt: `Describe a real-world application of ${skill || subject}.`, points: 10 },
-        { id: 'q3', type: 'true-false', prompt: `Is ${skill || subject} related to ${theme || 'other fields'}?`, points: 5 },
-        { id: 'q4', type: 'fill-in-the-blank', prompt: `${skill || subject} is a fundamental part of the ________ curriculum.`, points: 5 },
-        { id: 'q5', type: 'multiple-choice', prompt: `Which of these is most likely related to ${theme || subject}?`, points: 5, options: ['Concept 1', 'Concept 2', 'Concept 3', 'Concept 4'] }
+      learning_objectives: [`Understand basic concepts of ${skill || subject}`],
+      standards_alignment: ["Generic Standard 1.A"],
+      sections: [
+        {
+          section_title: "Warm-up",
+          instructions: "Answer these quick questions.",
+          questions: [
+            { id: 'q1', type: 'multiple-choice', prompt: `What is the core concept of ${skill || subject}?`, points: 5, options: ['Option A', 'Option B', 'Option C', 'Option D'] }
+          ]
+        },
+        {
+          section_title: "Guided Practice",
+          instructions: "Complete these with help if needed.",
+          questions: [
+            { id: 'q2', type: 'short-answer', prompt: `Describe a real-world application of ${skill || subject}.`, points: 10 }
+          ]
+        },
+        {
+          section_title: "Independent Practice",
+          instructions: "Show what you know!",
+          questions: [
+            { id: 'q3', type: 'true-false', prompt: `Is ${skill || subject} related to ${theme || 'other fields'}?`, points: 5 },
+            { id: 'q4', type: 'fill-in-the-blank', prompt: `${skill || subject} is a fundamental part of the ________ curriculum.`, points: 5 }
+          ]
+        },
+        {
+          section_title: "Challenge",
+          instructions: "Think deep!",
+          questions: [
+            { id: 'q5', type: 'multiple-choice', prompt: `Which of these is most likely related to ${theme || subject}?`, points: 5, options: ['Concept 1', 'Concept 2', 'Concept 3', 'Concept 4'] }
+          ]
+        }
       ],
-      answerKey: {
+      answer_key: {
         q1: 'Option A',
         q2: 'Sample answer describing real-world application.',
         q3: 'True',
         q4: 'School',
         q5: 'Concept 1'
-      }
+      },
+      reflection_question: "What was the most challenging part of this worksheet?"
     };
   }
 
@@ -324,8 +328,13 @@ app.post('/api/generate-worksheet', authenticateToken, checkSubscription, async 
   };
 
   try {
-    const sql = `INSERT INTO worksheets (id, title, grade, subject, skill, difficulty, theme, learning_style, instructions, content, answer_key, user_id) 
-                 VALUES ('${fullWorksheet.id}', '${fullWorksheet.title.replace(/'/g, "''")}', '${fullWorksheet.grade}', '${fullWorksheet.subject.replace(/'/g, "''")}', '${fullWorksheet.skill.replace(/'/g, "''")}', '${fullWorksheet.difficulty}', '${fullWorksheet.theme.replace(/'/g, "''")}', '${fullWorksheet.learningStyle}', '${fullWorksheet.instructions.replace(/'/g, "''")}', '${JSON.stringify(fullWorksheet.questions).replace(/'/g, "''")}', '${JSON.stringify(fullWorksheet.answerKey).replace(/'/g, "''")}', '${userId}')`;
+    const questionsJson = JSON.stringify(fullWorksheet.sections);
+    const objectivesJson = JSON.stringify(fullWorksheet.learning_objectives);
+    const standardsJson = JSON.stringify(fullWorksheet.standards_alignment);
+    const answerKeyJson = JSON.stringify(fullWorksheet.answer_key);
+
+    const sql = `INSERT INTO worksheets (id, title, grade, subject, skill, difficulty, theme, learning_style, instructions, content, answer_key, user_id, learning_objectives, standards_alignment, reflection_question) 
+                 VALUES ('${fullWorksheet.id}', '${fullWorksheet.title.replace(/'/g, "''")}', '${fullWorksheet.grade}', '${fullWorksheet.subject.replace(/'/g, "''")}', '${fullWorksheet.skill.replace(/'/g, "''")}', '${fullWorksheet.difficulty}', '${fullWorksheet.theme.replace(/'/g, "''")}', '${fullWorksheet.learningStyle}', '${(fullWorksheet.instructions || '').replace(/'/g, "''")}', '${questionsJson.replace(/'/g, "''")}', '${answerKeyJson.replace(/'/g, "''")}', '${userId}', '${objectivesJson.replace(/'/g, "''")}', '${standardsJson.replace(/'/g, "''")}', '${(fullWorksheet.reflection_question || '').replace(/'/g, "''")}')`;
     
     runTeamDb(sql);
     res.status(201).json(fullWorksheet);
@@ -400,8 +409,10 @@ app.get('/api/worksheets/:id/pdf', authenticateToken, async (req, res) => {
     }
 
     const worksheet = results[0];
-    const questions = JSON.parse(worksheet.content);
+    const sections = JSON.parse(worksheet.content);
     const answerKey = JSON.parse(worksheet.answer_key);
+    const learningObjectives = JSON.parse(worksheet.learning_objectives || '[]');
+    const standardsAlignment = JSON.parse(worksheet.standards_alignment || '[]');
 
     const doc = new PDFDocument({ margin: 50 });
 
@@ -421,33 +432,85 @@ app.get('/api/worksheets/:id/pdf', authenticateToken, async (req, res) => {
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
     doc.moveDown();
 
-    // Instructions
-    doc.fontSize(14).font('Helvetica-Bold').text('Instructions:');
-    doc.fontSize(12).font('Helvetica').text(worksheet.instructions);
-    doc.moveDown(2);
-
-    // Questions
-    questions.forEach((q, index) => {
-      if (doc.y > 650) doc.addPage();
-      doc.fontSize(12).font('Helvetica-Bold').text(`${index + 1}. ${q.prompt} (${q.points} pts)`);
+    // Learning Objectives & Standards
+    if (learningObjectives.length > 0) {
+      doc.fontSize(12).font('Helvetica-Bold').text('Learning Objectives:');
+      learningObjectives.forEach(obj => {
+        doc.fontSize(10).font('Helvetica').text(`• ${obj}`);
+      });
       doc.moveDown(0.5);
-      if (q.type === 'multiple-choice' && q.options) {
-        q.options.forEach((opt) => {
-          doc.fontSize(11).font('Helvetica').text(`   [  ] ${opt}`);
-          doc.moveDown(0.2);
-        });
-      } else if (q.type === 'short-answer') {
-        doc.moveDown(1);
-        doc.moveTo(70, doc.y).lineTo(530, doc.y).stroke();
-        doc.moveDown(1);
-        doc.moveTo(70, doc.y).lineTo(530, doc.y).stroke();
-      } else if (q.type === 'true-false') {
-        doc.fontSize(11).font('Helvetica').text(`   (   ) True      (   ) False`);
-      } else {
-        doc.moveDown(1.5);
+    }
+    if (standardsAlignment.length > 0) {
+      doc.fontSize(12).font('Helvetica-Bold').text('Standards Alignment:');
+      doc.fontSize(10).font('Helvetica').text(standardsAlignment.join(', '));
+      doc.moveDown();
+    }
+
+    // Sections & Questions
+    sections.forEach((section) => {
+      if (doc.y > 600) doc.addPage();
+      doc.fontSize(16).font('Helvetica-Bold').fillColor('#2563eb').text(section.section_title);
+      doc.fillColor('black');
+      if (section.instructions) {
+        doc.fontSize(11).font('Helvetica-Oblique').text(section.instructions);
       }
-      doc.moveDown(1.5);
+      doc.moveDown(0.5);
+
+      section.questions.forEach((q, index) => {
+        if (doc.y > 700) doc.addPage();
+        doc.fontSize(12).font('Helvetica-Bold').text(`${q.prompt} (${q.points} pts)`);
+        doc.moveDown(0.5);
+
+        if (q.type === 'multiple-choice' && q.options) {
+          q.options.forEach((opt) => {
+            doc.fontSize(11).font('Helvetica').text(`   [  ] ${opt}`);
+            doc.moveDown(0.2);
+          });
+        } else if (q.type === 'short-answer') {
+          doc.moveDown(1);
+          doc.moveTo(70, doc.y).lineTo(530, doc.y).stroke();
+          doc.moveDown(1);
+          doc.moveTo(70, doc.y).lineTo(530, doc.y).stroke();
+        } else if (q.type === 'true-false') {
+          doc.fontSize(11).font('Helvetica').text(`   (   ) True      (   ) False`);
+        } else if (q.type === 'matching' && q.matching_pairs) {
+          const pairs = q.matching_pairs;
+          const left = pairs.left_side || [];
+          const right = [...(pairs.right_side || [])].sort(() => Math.random() - 0.5);
+          
+          left.forEach((l, i) => {
+            const r = right[i] || '';
+            doc.fontSize(11).font('Helvetica').text(`${i + 1}. ${l.padEnd(30)} ________    A. ${r}`);
+            doc.moveDown(0.2);
+          });
+        } else if (q.type === 'ordering' && q.ordering_items) {
+          q.ordering_items.forEach((item, i) => {
+            doc.fontSize(11).font('Helvetica').text(`   ____  ${item}`);
+            doc.moveDown(0.2);
+          });
+        } else if (q.type === 'diagram-labeling') {
+          if (q.visual_aid) {
+            doc.fontSize(10).font('Courier').text(q.visual_aid, { align: 'center' });
+            doc.moveDown();
+          }
+          doc.fontSize(11).font('Helvetica-Bold').text('Labels to use: ' + (q.options || []).join(', '));
+          doc.moveDown(2);
+        } else {
+          doc.moveDown(1.5);
+        }
+        doc.moveDown(1);
+      });
+      doc.moveDown();
     });
+
+    // Reflection Question
+    if (worksheet.reflection_question) {
+      if (doc.y > 700) doc.addPage();
+      doc.fontSize(14).font('Helvetica-Bold').text('Reflection');
+      doc.fontSize(12).font('Helvetica').text(worksheet.reflection_question);
+      doc.moveDown(1.5);
+      doc.moveTo(70, doc.y).lineTo(530, doc.y).stroke();
+    }
 
     // Answer Key Page
     doc.addPage();
@@ -455,11 +518,17 @@ app.get('/api/worksheets/:id/pdf', authenticateToken, async (req, res) => {
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
     doc.moveDown();
-    questions.forEach((q, index) => {
-      const answer = answerKey[q.id] || answerKey[index + 1] || 'N/A';
-      doc.fontSize(12).font('Helvetica-Bold').text(`Question ${index + 1}: `, { continued: true });
-      doc.font('Helvetica').text(answer);
-      doc.moveDown(0.5);
+    
+    // Iterate sections again for answer key
+    sections.forEach((section) => {
+      doc.fontSize(14).font('Helvetica-Bold').text(section.section_title);
+      section.questions.forEach((q) => {
+        const answer = answerKey[q.id] || 'N/A';
+        doc.fontSize(11).font('Helvetica-Bold').text(`${q.prompt.substring(0, 50)}...: `, { continued: true });
+        doc.font('Helvetica').text(answer);
+        doc.moveDown(0.3);
+      });
+      doc.moveDown();
     });
     doc.end();
   } catch (error) {

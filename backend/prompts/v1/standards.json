@@ -1,0 +1,24 @@
+{
+  "Math": {
+    "K": ["Counting and Cardinality", "Operations and Algebraic Thinking", "Number and Operations in Base Ten", "Measurement and Data", "Geometry"],
+    "1": ["Operations and Algebraic Thinking", "Number and Operations in Base Ten", "Measurement and Data", "Geometry"],
+    "2": ["Operations and Algebraic Thinking", "Number and Operations in Base Ten", "Measurement and Data", "Geometry"],
+    "3": ["Operations and Algebraic Thinking", "Number and Operations in Base Ten", "Number and Operations—Fractions", "Measurement and Data", "Geometry"],
+    "4": ["Operations and Algebraic Thinking", "Number and Operations in Base Ten", "Number and Operations—Fractions", "Measurement and Data", "Geometry"],
+    "5": ["Operations and Algebraic Thinking", "Number and Operations in Base Ten", "Number and Operations—Fractions", "Measurement and Data", "Geometry"],
+    "6": ["Ratios and Proportional Relationships", "The Number System", "Expressions and Equations", "Geometry", "Statistics and Probability"],
+    "7": ["Ratios and Proportional Relationships", "The Number System", "Expressions and Equations", "Geometry", "Statistics and Probability"],
+    "8": ["The Number System", "Expressions and Equations", "Functions", "Geometry", "Statistics and Probability"],
+    "9-12": ["Number and Quantity", "Algebra", "Functions", "Modeling", "Geometry", "Statistics and Probability"]
+  },
+  "Science": {
+    "K-2": ["Interdependent Relationships in Ecosystems", "Forces and Interactions", "Weather and Climate", "Engineering Design"],
+    "3-5": ["Structure and Properties of Matter", "Matter and Energy in Organisms and Ecosystems", "Earth's Systems", "Space Systems", "Engineering Design"],
+    "6-8": ["Structure and Properties of Matter", "Chemical Reactions", "Forces and Interactions", "Energy", "Waves and Electromagnetic Radiation", "Structure, Function, and Information Processing"],
+    "9-12": ["Structure and Properties of Matter", "Chemical Reactions", "Nuclear Processes", "Forces and Interactions", "Energy", "Structure and Function", "Inheritance and Variation of Traits"]
+  },
+  "English": {
+    "K-5": ["Reading: Literature", "Reading: Informational Text", "Reading: Foundational Skills", "Writing", "Speaking and Listening", "Language"],
+    "6-12": ["Reading: Literature", "Reading: Informational Text", "Writing", "Speaking and Listening", "Language", "Literacy in History/Social Studies", "Literacy in Science and Technical Subjects"]
+  }
+}

@@ -115,47 +115,117 @@ function Generator() {
             </div>
             <button onClick={handleDownloadPdf} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">Download PDF</button>
           </div>
-          
+
           <div className="prose max-w-none">
-            <p className="whitespace-pre-wrap mb-6">{worksheet.instructions}</p>
-            
-            <div className="space-y-8">
-              {worksheet.questions.map((q, idx) => (
-                <div key={q.id} className="border-b pb-4 last:border-0">
-                  <p className="font-semibold text-lg">{idx + 1}. {q.prompt} <span className="text-sm text-gray-400">({q.points} pts)</span></p>
-                  {q.options && (
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {q.options.map(opt => (
-                        <div key={opt} className="flex items-center space-x-2 border rounded p-2 bg-gray-50">
-                          <div className="w-4 h-4 border border-gray-400 rounded-full"></div>
-                          <span>{opt}</span>
+            {worksheet.learning_objectives && (
+              <div className="mb-6">
+                <h3 className="text-lg font-bold">Learning Objectives</h3>
+                <ul className="list-disc list-inside">
+                  {worksheet.learning_objectives.map((obj, i) => <li key={i}>{obj}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {worksheet.sections.map((section, sIdx) => (
+              <div key={sIdx} className="mb-10">
+                <h3 className="text-xl font-bold text-blue-700 border-b-2 border-blue-100 pb-1 mb-3">{section.section_title}</h3>
+                <p className="text-gray-600 italic mb-4">{section.instructions}</p>
+
+                <div className="space-y-8">
+                  {section.questions.map((q, idx) => (
+                    <div key={q.id || idx} className="border-b pb-4 last:border-0">
+                      <p className="font-semibold text-lg">{q.prompt} <span className="text-sm text-gray-400">({q.points} pts)</span></p>
+
+                      {q.type === 'multiple-choice' && q.options && (
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {q.options.map(opt => (
+                            <div key={opt} className="flex items-center space-x-2 border rounded p-2 bg-gray-50">
+                              <div className="w-4 h-4 border border-gray-400 rounded-full"></div>
+                              <span>{opt}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+
+                      {q.type === 'short-answer' && (
+                        <div className="mt-3 border-b-2 border-gray-200 h-10 w-full"></div>
+                      )}
+
+                      {q.type === 'true-false' && (
+                        <div className="mt-3 flex space-x-4">
+                          <span className="flex items-center space-x-1"><div className="w-4 h-4 border border-gray-400 rounded-full"></div><span>True</span></span>
+                          <span className="flex items-center space-x-1"><div className="w-4 h-4 border border-gray-400 rounded-full"></div><span>False</span></span>
+                        </div>
+                      )}
+
+                      {q.type === 'matching' && q.matching_pairs && (
+                        <div className="mt-3 grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            {q.matching_pairs.left_side.map((item, i) => (
+                              <div key={i} className="p-2 border bg-gray-50 rounded">{i+1}. {item}</div>
+                            ))}
+                          </div>
+                          <div className="space-y-2">
+                            {q.matching_pairs.right_side.map((item, i) => (
+                              <div key={i} className="flex items-center space-x-2">
+                                <div className="w-12 h-8 border-b-2 border-gray-300"></div>
+                                <div className="p-2 border bg-gray-50 rounded flex-grow">{String.fromCharCode(65+i)}. {item}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {q.type === 'ordering' && q.ordering_items && (
+                        <div className="mt-3 space-y-2">
+                          {q.ordering_items.map((item, i) => (
+                            <div key={i} className="flex items-center space-x-3">
+                              <div className="w-8 h-8 border rounded flex items-center justify-center text-gray-300">#</div>
+                              <div className="p-2 border bg-gray-50 rounded flex-grow">{item}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {q.type === 'diagram-labeling' && (
+                        <div className="mt-3 space-y-4">
+                          {q.visual_aid && (
+                            <pre className="bg-gray-800 text-green-400 p-4 rounded overflow-x-auto font-mono text-xs">
+                              {q.visual_aid}
+                            </pre>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {q.options && q.options.map(opt => (
+                              <span key={opt} className="px-3 py-1 border-2 border-dashed border-gray-300 rounded text-sm text-gray-600 font-bold">{opt}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {q.type === 'fill-in-the-blank' && (
+                        <div className="mt-3 text-gray-500 italic">Type: Fill in the blank</div>
+                      )}
                     </div>
-                  )}
-                  {q.type === 'short-answer' && (
-                    <div className="mt-3 border-b-2 border-gray-200 h-10 w-full"></div>
-                  )}
-                  {q.type === 'true-false' && (
-                    <div className="mt-3 flex space-x-4">
-                      <span className="flex items-center space-x-1"><div className="w-4 h-4 border border-gray-400 rounded-full"></div><span>True</span></span>
-                      <span className="flex items-center space-x-1"><div className="w-4 h-4 border border-gray-400 rounded-full"></div><span>False</span></span>
-                    </div>
-                  )}
-                  {q.type === 'fill-in-the-blank' && (
-                    <div className="mt-3 text-gray-500 italic">Type: Fill in the blank</div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+
+            {worksheet.reflection_question && (
+              <div className="mt-12 pt-6 border-t">
+                <h3 className="text-lg font-bold mb-2">Reflection</h3>
+                <p className="mb-4">{worksheet.reflection_question}</p>
+                <div className="border-b-2 border-gray-200 h-20 w-full"></div>
+              </div>
+            )}
 
             <div className="mt-12 p-4 bg-gray-50 rounded border border-dashed border-gray-300">
               <h3 className="text-lg font-bold mb-2">Answer Key (For Teachers Only)</h3>
-              <ul className="list-disc list-inside">
-                {Object.entries(worksheet.answerKey).map(([id, ans], idx) => (
-                  <li key={id}><strong>Question {idx + 1}:</strong> {ans}</li>
+              <div className="space-y-4">
+                {Object.entries(worksheet.answer_key).map(([id, ans]) => (
+                  <div key={id}><strong>{id}:</strong> {ans}</div>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
         </div>
