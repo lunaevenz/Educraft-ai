@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'educraft-secret-key-123';
 
 const promptManager = new PromptManager('v1');
+const FREE_LIMIT = 3;
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -60,24 +61,43 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Subscription middleware
+// Subscription & Free Tier middleware
 const checkSubscription = (req, res, next) => {
   const userId = req.user.id;
   try {
     const subs = runTeamDb(`SELECT * FROM subscriptions WHERE user_id = '${userId}' AND status = 'active'`);
     
-    if (!subs || subs.length === 0) {
+    if (subs && subs.length > 0) {
+      req.subscription = subs[0];
+      return next();
+    }
+
+    // No active subscription, check free tier
+    const users = runTeamDb(`SELECT monthly_generations, last_reset_month FROM users WHERE id = '${userId}'`);
+    if (!users || users.length === 0) return res.status(404).json({ error: 'User not found' });
+    
+    const user = users[0];
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    
+    let currentGens = user.monthly_generations || 0;
+    if (user.last_reset_month !== currentMonth) {
+      // Reset counter for new month
+      runTeamDb(`UPDATE users SET monthly_generations = 0, last_reset_month = '${currentMonth}' WHERE id = '${userId}'`);
+      currentGens = 0;
+    }
+
+    if (currentGens >= FREE_LIMIT) {
       return res.status(403).json({ 
-        error: 'Subscription required', 
-        code: 'SUBSCRIPTION_REQUIRED',
-        message: 'An active subscription is required to generate worksheets.' 
+        error: 'Generation limit reached', 
+        code: 'LIMIT_REACHED',
+        message: `You have used all ${FREE_LIMIT} free worksheets for this month. Upgrade for unlimited access!` 
       });
     }
-    req.subscription = subs[0];
+
     next();
   } catch (error) {
     console.error('Subscription check error:', error);
-    res.status(500).json({ error: 'Failed to verify subscription' });
+    res.status(500).json({ error: 'Failed to verify subscription status' });
   }
 };
 
@@ -129,6 +149,31 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.get('/api/user/usage', authenticateToken, (req, res) => {
+  const userId = req.user.id;
+  try {
+    const users = runTeamDb(`SELECT monthly_generations, last_reset_month FROM users WHERE id = '${userId}'`);
+    const subs = runTeamDb(`SELECT * FROM subscriptions WHERE user_id = '${userId}' AND status = 'active' ORDER BY created_at DESC LIMIT 1`);
+    
+    const user = users[0];
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    
+    let currentGens = user.monthly_generations || 0;
+    if (user.last_reset_month !== currentMonth) {
+      currentGens = 0;
+    }
+
+    res.json({
+      freeGenerationsRemaining: Math.max(0, FREE_LIMIT - currentGens),
+      totalFreeLimit: FREE_LIMIT,
+      subscription: subs[0] || null
+    });
+  } catch (error) {
+    console.error('Usage fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch usage data' });
   }
 });
 
@@ -337,6 +382,11 @@ app.post('/api/generate-worksheet', authenticateToken, checkSubscription, async 
                  VALUES ('${fullWorksheet.id}', '${fullWorksheet.title.replace(/'/g, "''")}', '${fullWorksheet.grade}', '${fullWorksheet.subject.replace(/'/g, "''")}', '${fullWorksheet.skill.replace(/'/g, "''")}', '${fullWorksheet.difficulty}', '${fullWorksheet.theme.replace(/'/g, "''")}', '${fullWorksheet.learningStyle}', '${(fullWorksheet.instructions || '').replace(/'/g, "''")}', '${questionsJson.replace(/'/g, "''")}', '${answerKeyJson.replace(/'/g, "''")}', '${userId}', '${objectivesJson.replace(/'/g, "''")}', '${standardsJson.replace(/'/g, "''")}', '${(fullWorksheet.reflection_question || '').replace(/'/g, "''")}')`;
     
     runTeamDb(sql);
+
+    if (!req.subscription) {
+      runTeamDb(`UPDATE users SET monthly_generations = monthly_generations + 1 WHERE id = '${userId}'`);
+    }
+
     res.status(201).json(fullWorksheet);
   } catch (error) {
     console.error('Error storing worksheet:', error);
@@ -539,7 +589,7 @@ app.get('/api/worksheets/:id/pdf', authenticateToken, async (req, res) => {
 
 // The "catchall" handler: for any request that doesn't
 // match one above, send back React's index.html file.
-app.get('/{*path}', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 

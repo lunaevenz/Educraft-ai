@@ -5,6 +5,18 @@ import { useNavigate } from 'react-router-dom';
 
 const PLANS = [
   {
+    id: 'free',
+    name: 'Free Tier',
+    price: '$0',
+    interval: '',
+    description: 'Perfect for trying out EduCraft AI.',
+    features: [
+      '3 AI Generations / month',
+      'PDF Exports with Answer Keys',
+      'Personal Dashboard'
+    ]
+  },
+  {
     id: 'individual',
     name: 'Individual Teacher',
     price: '$9.99',
@@ -106,15 +118,15 @@ function Pricing() {
                   <span className="text-base font-medium text-gray-500">{plan.interval}</span>
                 </p>
                 <button
-                  onClick={() => handleCheckout(plan.id)}
-                  disabled={loading}
+                  onClick={() => plan.id !== 'free' && handleCheckout(plan.id)}
+                  disabled={loading || (plan.id === 'free' && !currentSub) || currentSub?.plan_type === plan.id}
                   className={`mt-8 block w-full py-3 px-6 border rounded-md text-center font-semibold transition ${
                     plan.popular 
                     ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
                     : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                  } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  } ${(loading || (plan.id === 'free' && !currentSub) || currentSub?.plan_type === plan.id) ? 'opacity-50 cursor-default' : ''}`}
                 >
-                  {currentSub?.plan_type === plan.id ? 'Current Plan' : 'Get Started'}
+                  {(plan.id === 'free' && !currentSub) || currentSub?.plan_type === plan.id ? 'Current Plan' : (plan.id === 'free' ? 'Select Free' : 'Get Started')}
                 </button>
               </div>
               <div className="pt-6 pb-8 px-6 flex-grow">

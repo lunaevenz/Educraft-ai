@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 
@@ -19,6 +19,20 @@ function Generator() {
   const [loading, setLoading] = useState(false);
   const [worksheet, setWorksheet] = useState(null);
   const [error, setError] = useState(null);
+  const [usage, setUsage] = useState(null);
+
+  useEffect(() => {
+    fetchUsage();
+  }, []);
+
+  const fetchUsage = async () => {
+    try {
+      const response = await axios.get('/api/user/usage');
+      setUsage(response.data);
+    } catch (err) {
+      console.error('Failed to fetch usage:', err);
+    }
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -32,13 +46,14 @@ function Generator() {
     try {
       const response = await axios.post('/api/generate-worksheet', formData);
       setWorksheet(response.data);
+      fetchUsage();
     } catch (err) {
-      if (err.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
+      if (err.response?.data?.code === 'LIMIT_REACHED' || err.response?.data?.code === 'SUBSCRIPTION_REQUIRED') {
         setError(
           <div className="flex flex-col items-center">
-            <p className="mb-4">{err.response.data.message}</p>
+            <p className="mb-4 text-center font-medium">{err.response.data.message}</p>
             <Link to="/pricing" className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 transition font-bold">
-              View Subscription Plans
+              Upgrade Now
             </Link>
           </div>
         );
@@ -62,6 +77,17 @@ function Generator() {
     <div className="max-w-4xl mx-auto px-4">
       <h1 className="text-3xl font-bold text-gray-900 mb-6 text-center">Worksheet Generator</h1>
       
+      {usage && !usage.subscription && (
+        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 flex justify-between items-center">
+          <p className="text-blue-700 font-medium">
+            Free Tier: {usage.freeGenerationsRemaining} of {usage.totalFreeLimit} remaining this month
+          </p>
+          <Link to="/pricing" className="text-sm font-bold text-blue-600 hover:text-blue-800 underline">
+            Upgrade for unlimited
+          </Link>
+        </div>
+      )}
+
       <div className="bg-white shadow rounded-lg p-6 mb-8">
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
