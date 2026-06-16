@@ -217,6 +217,50 @@ app.get('/api/worksheets', authenticateToken, (req, res) => {
   }
 });
 
+// Marketplace Routes
+app.get('/api/marketplace', (req, res) => {
+  const { subject, grade } = req.query;
+  let query = 'SELECT m.*, u.name as creator_name FROM marketplace_items m JOIN users u ON m.creator_id = u.id';
+  const conditions = [];
+  
+  if (subject) conditions.push(`m.subject = '${subject}'`);
+  if (grade) conditions.push(`m.grade = '${grade}'`);
+  
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  
+  query += ' ORDER BY m.created_at DESC';
+
+  try {
+    const items = runTeamDb(query);
+    res.json(items);
+  } catch (error) {
+    console.error('Marketplace fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch marketplace items' });
+  }
+});
+
+app.post('/api/marketplace', authenticateToken, (req, res) => {
+  const { title, description, subject, grade, price, file_url, preview_url } = req.body;
+  const creatorId = req.user.id;
+
+  if (!title || !subject || !grade) {
+    return res.status(400).json({ error: 'Title, subject, and grade are required' });
+  }
+
+  const id = uuidv4();
+  try {
+    const sql = `INSERT INTO marketplace_items (id, creator_id, title, description, subject, grade, price, file_url, preview_url) 
+                 VALUES ('${id}', '${creatorId}', '${title.replace(/'/g, "''")}', '${(description || '').replace(/'/g, "''")}', '${subject}', '${grade}', ${price || 0}, '${file_url || ''}', '${preview_url || ''}')`;
+    runTeamDb(sql);
+    res.status(201).json({ id, title, creatorId });
+  } catch (error) {
+    console.error('Marketplace publish error:', error);
+    res.status(500).json({ error: 'Failed to publish marketplace item' });
+  }
+});
+
 app.get('/api/worksheets/:id/pdf', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;
