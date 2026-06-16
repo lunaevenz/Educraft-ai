@@ -1,17 +1,28 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 function MarketplaceDetail() {
   const { id } = useParams();
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const { user } = useAuth();
+  const location = useLocation();
 
   useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    if (query.get('status') === 'success') {
+      setMsg({ type: 'success', text: 'Resource purchased successfully! Check your downloads.' });
+    } else if (query.get('status') === 'canceled') {
+      setMsg({ type: 'error', text: 'Purchase was canceled.' });
+    }
+
     const fetchItem = async () => {
       try {
-        // Since we don't have a single item fetch endpoint yet, we'll find it in the list
         const response = await axios.get('/api/marketplace');
         const found = response.data.find(i => i.id === id);
         if (found) {
@@ -27,7 +38,27 @@ function MarketplaceDetail() {
     };
 
     fetchItem();
-  }, [id]);
+  }, [id, location]);
+
+  const handlePurchase = async () => {
+    if (!user) {
+      window.location.href = `/login?redirect=/marketplace/${id}`;
+      return;
+    }
+
+    setPurchasing(true);
+    try {
+      const response = await axios.post(`/api/marketplace/${id}/purchase`);
+      if (response.data.url) {
+        window.location.href = response.data.url;
+      }
+    } catch (err) {
+      console.error('Purchase error:', err);
+      alert('Failed to initiate purchase.');
+    } finally {
+      setPurchasing(false);
+    }
+  };
 
   if (loading) return <div className="text-center py-12">Loading details...</div>;
   if (error) return <div className="text-center py-12 text-red-600">{error}</div>;
@@ -38,6 +69,12 @@ function MarketplaceDetail() {
       <Link to="/marketplace" className="text-indigo-600 hover:underline mb-6 inline-block">
         &larr; Back to Marketplace
       </Link>
+      
+      {msg && (
+        <div className={`p-4 mb-6 rounded-md ${msg.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+          {msg.text}
+        </div>
+      )}
       
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="md:flex">
@@ -67,8 +104,12 @@ function MarketplaceDetail() {
             </div>
             
             <div className="mt-10">
-              <button className="w-full bg-indigo-600 text-white py-4 px-6 rounded-lg font-bold text-lg hover:bg-indigo-700 transition">
-                {item.price > 0 ? `Purchase for $${item.price.toFixed(2)}` : 'Download for Free'}
+              <button 
+                onClick={handlePurchase}
+                disabled={purchasing}
+                className={`w-full bg-indigo-600 text-white py-4 px-6 rounded-lg font-bold text-lg hover:bg-indigo-700 transition ${purchasing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {purchasing ? 'Processing...' : (item.price > 0 ? `Purchase for $${item.price.toFixed(2)}` : 'Download for Free')}
               </button>
               <p className="text-xs text-center text-gray-400 mt-3 italic">
                 Secure checkout and instant delivery.
